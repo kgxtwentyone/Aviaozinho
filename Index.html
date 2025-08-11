@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Aviator - Cão Voador</title>
+<style>
+  body {
+    margin: 0;
+    overflow: hidden;
+    font-family: Arial, sans-serif;
+    background: #87ceeb;
+  }
+  #gameCanvas {
+    display: block;
+    margin: 0 auto;
+    background: linear-gradient(#87ceeb, #fff);
+  }
+  #startScreen, #gameOverScreen {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    background: rgba(0,0,0,0.7);
+    color: white;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    z-index: 10;
+  }
+  button {
+    padding: 10px 20px;
+    font-size: 18px;
+    border: none;
+    background: #ff9800;
+    color: white;
+    cursor: pointer;
+    border-radius: 8px;
+    margin-top: 15px;
+  }
+  button:hover {
+    background: #e68900;
+  }
+</style>
+</head>
+<body>
+
+<canvas id="gameCanvas" width="800" height="400"></canvas>
+
+<div id="startScreen">
+  <h1>Aviator</h1>
+  <button id="btnStart">Começar</button>
+</div>
+
+<div id="gameOverScreen" style="display:none;">
+  <h1>Game Over</h1>
+  <p id="finalScore"></p>
+  <button id="btnRestart">Jogar Novamente</button>
+</div>
+
+<script>
+const canvas = document.getElementById("gameCanvas");
+const ctx = canvas.getContext("2d");
+
+let player, obstacles, clouds, score, gameSpeed, gravity, jumpStrength, gameRunning, lastSpeedIncrease, speedIncreaseCount;
+const SPEED_INCREASE_INTERVAL = 120000; // 2 minutos
+const MAX_SPEED_INCREASES = 5; // até 10 minutos (5 x 2min)
+
+function drawDog(x, y) {
+  ctx.fillStyle = "#ffcc66"; // corpo
+  ctx.fillRect(x, y, 40, 25);
+  ctx.fillStyle = "#000"; // olho
+  ctx.beginPath();
+  ctx.arc(x + 30, y + 8, 3, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#cc9966"; // orelha
+  ctx.beginPath();
+  ctx.moveTo(x + 10, y);
+  ctx.lineTo(x + 5, y - 10);
+  ctx.lineTo(x + 15, y);
+  ctx.fill();
+  ctx.fillStyle = "#ffcc66"; // cauda
+  ctx.fillRect(x - 10, y + 5, 10, 5);
+}
+
+function drawObstacle(ob) {
+  ctx.fillStyle = "red";
+  if (ob.type === "rect") {
+    ctx.fillRect(ob.x, ob.y, ob.width, ob.height);
+  } else if (ob.type === "circle") {
+    ctx.beginPath();
+    ctx.arc(ob.x + ob.radius, ob.y + ob.radius, ob.radius, 0, Math.PI * 2);
+    ctx.fill();
+  } else if (ob.type === "triangle") {
+    ctx.beginPath();
+    ctx.moveTo(ob.x, ob.y + ob.height);
+    ctx.lineTo(ob.x + ob.width / 2, ob.y);
+    ctx.lineTo(ob.x + ob.width, ob.y + ob.height);
+    ctx.closePath();
+    ctx.fill();
+  }
+}
+
+function createObstacle(xPos) {
+  const types = ["rect", "circle", "triangle"];
+  const type = types[Math.floor(Math.random() * types.length)];
+  if (type === "rect") {
+    return { type, x: xPos, y: canvas.height - 40, width: 20, height: 20 };
+  } else if (type === "circle") {
+    return { type, x: xPos, y: canvas.height - 40, radius: 10 };
+  } else { // triangle
+    return { type, x: xPos, y: canvas.height - 40, width: 20, height: 20 };
+  }
+}
+
+function startGame() {
+  player = { x: 50, y: canvas.height - 50, width: 40, height: 25, dy: 0, jumping: false };
+  gravity = 0.5;
+  jumpStrength = -10;
+  gameSpeed = 3; // inicial muito rápido
+  score = 0;
+  lastSpeedIncrease = Date.now();
+  speedIncreaseCount = 0;
+  obstacles = [];
+  clouds = [];
+  for (let i = 0; i < 5; i++) {
+    clouds.push({ x: Math.random() * canvas.width, y: Math.random() * 100, size: 40 + Math.random() * 30, speed: 0.3 });
+  }
+  gameRunning = true;
+  document.getElementById("startScreen").style.display = "none";
+  document.getElementById("gameOverScreen").style.display = "none";
+  requestAnimationFrame(update);
+}
+
+function endGame() {
+  gameRunning = false;
+  document.getElementById("finalScore").innerText = `Pontuação: ${Math.floor(score)}`;
+  document.getElementById("gameOverScreen").style.display = "flex";
+}
+
+function jump() {
+  if (!player.jumping) {
+    player.dy = jumpStrength;
+    player.jumping = true;
+  }
+}
+
+document.addEventListener("keydown", e => { if ((e.code === "Space" || e.code === "ArrowUp") && gameRunning) jump(); });
+document.addEventListener("touchstart", () => { if (gameRunning) jump(); });
+
+function update() {
+  if (!gameRunning) return;
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // Fundo
+  let gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
+  gradient.addColorStop(0, "#87ceeb");
+  gradient.addColorStop(1, "#fff");
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // Nuvens
+  ctx.fillStyle = "white";
+  clouds.forEach(cloud => {
+    ctx.beginPath();
+    ctx.arc(cloud.x, cloud.y, cloud.size / 2, 0, Math.PI * 2);
+    ctx.fill();
+    cloud.x -= cloud.speed;
+    if (cloud.x + cloud.size < 0) {
+      cloud.x = canvas.width + cloud.size;
+      cloud.y = Math.random() * 100;
+    }
+  });
+
+  // Player
+  drawDog(player.x, player.y);
+
+  player.y += player.dy;
+  player.dy += gravity;
+
+  if (player.y + player.height >= canvas.height - 20) {
+    player.y = canvas.height - 20 - player.height;
+    player.dy = 0;
+    player.jumping = false;
+  }
+
+  // Obstáculos - pode ter 1 ou 2 com espaço seguro para pular (4x espaço)
+  if (obstacles.length === 0) {
+    const twoObstacles = Math.random() < 0.3;
+    if (twoObstacles) {
+      const safeSpace = (player.width + 15) * 4; // 4 vezes o espaço seguro
+      const firstX = canvas.width;
+      const secondX = firstX + safeSpace + 20; // 20 largura do obstáculo
+      obstacles.push(createObstacle(firstX));
+      obstacles.push(createObstacle(secondX));
+    } else {
+      obstacles.push(createObstacle(canvas.width));
+    }
+  }
+
+  ctx.fillStyle = "red";
+  obstacles.forEach((obs, i) => {
+    obs.x -= gameSpeed;
+    drawObstacle(obs);
+
+    // Remove obstáculo quando sair da tela
+    if (obs.type === "circle") {
+      if (obs.x + obs.radius * 2 < 0) obstacles.splice(i, 1);
+    } else {
+      if (obs.x + obs.width < 0) obstacles.splice(i, 1);
+    }
+
+    // Colisão (caixa aproximada para círculos)
+    const obsLeft = obs.x;
+    const obsRight = obs.type === "circle" ? obs.x + obs.radius * 2 : obs.x + obs.width;
+    const obsTop = obs.y;
+    const obsBottom = obs.type === "circle" ? obs.y + obs.radius * 2 : obs.y + obs.height;
+
+    if (player.x < obsRight &&
+        player.x + player.width > obsLeft &&
+        player.y < obsBottom &&
+        player.y + player.height > obsTop) {
+      endGame();
+    }
+  });
+
+  // Pontuação
+  score += 0.15;
+  ctx.fillStyle = "black";
+  ctx.font = "20px Arial";
+  ctx.fillText(`Pontuação: ${Math.floor(score)}`, 10, 30);
+
+  // Créditos
+  ctx.font = "14px Arial";
+  ctx.fillText("Kgxtwentyone", 10, canvas.height - 10);
+  ctx.fillText("Mocambique V1.021", canvas.width - 150, canvas.height - 10);
+
+  // Aumentar velocidade a cada 2 minutos até 10 min
+  if (Date.now() - lastSpeedIncrease > SPEED_INCREASE_INTERVAL && speedIncreaseCount < MAX_SPEED_INCREASES) {
+    gameSpeed += 2; // aumento grande
+    speedIncreaseCount++;
+    lastSpeedIncrease = Date.now();
+  }
+
+  requestAnimationFrame(update);
+}
+
+document.getElementById("btnStart").onclick = startGame;
+document.getElementById("btnRestart").onclick = startGame;
+</script>
+
+</body>
+</html>
